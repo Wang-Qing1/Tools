@@ -7,6 +7,7 @@
     <groupId>org.tools</groupId>
     <artifactId>Tools</artifactId>
     <version>1.0</version>
+    <description>记录一些工具类</description>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
