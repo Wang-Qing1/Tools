@@ -1,4 +1,4 @@
-package org.tools.middleware;
+package org.tools.kafka;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
