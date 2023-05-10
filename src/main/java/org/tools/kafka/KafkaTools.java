@@ -59,7 +59,7 @@ public class KafkaTools {
             ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC, jsonArray.toJSONString());
             Headers headers = record.headers();
             headers.add("dataType", "1".getBytes(StandardCharsets.UTF_8));
-            headers.add("optionType", "add".getBytes(StandardCharsets.UTF_8));
+            headers.add("optionType", "update".getBytes(StandardCharsets.UTF_8));
             kafkaProducer.send(record);
         }
 
