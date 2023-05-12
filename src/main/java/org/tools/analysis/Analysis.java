@@ -1,17 +1,19 @@
 package org.tools.analysis;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.tools.http.HTTPDemo;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 解析统一用户中心组织和用户
@@ -21,6 +23,7 @@ public class Analysis {
         // 组织
         List<Org> orgs = analysisOrg();
         System.out.println("最终的有效组织信息数量：" + orgs.size() + ", 内容：" + JSON.toJSONString(orgs));
+        writeOrgSQLFile(orgs);
 
         // 用户
         Map<String, Org> orgMap = new HashMap<>();
@@ -29,8 +32,109 @@ public class Analysis {
         }
         List<OrgUser> orgUsers = analysisOrgUser(orgMap);
         System.out.println("最终的有效用户信息数量：" + orgUsers.size() + ", 内容：" + JSON.toJSONString(orgUsers));
+        writerUserSQLFile(orgUsers);
 
-        // 用户-角色
+        // 用户-角色    数据监管平台认证类型 3-数据商 4-律所
+        Set<String> dataIds = orgUsers.stream().filter(item -> item.getAuthType() == 3).map(item -> item.getId()).collect(Collectors.toSet());
+        Set<String> lawIds = orgUsers.stream().filter(item -> item.getAuthType() == 4).map(item -> item.getId()).collect(Collectors.toSet());
+        System.out.println("数据商角色用户数量：" + dataIds.size() +", 内容：" + dataIds.toString());
+        System.out.println("律师角色用户数量：" + lawIds.size() + ", 内容：" + lawIds.toString());
+
+    }
+
+    private static void writerUserSQLFile(List<OrgUser> orgUsers) {
+        String sqlTemp = "INSERT INTO `dc-server`.`sys_user` (`user_org_id`,`sso_id`,`login_name`,`password`,`password_expired`,`sts`,`failure_count`,`user_name`,`gender`,`phone`,`email`,`create_time`,`create_user_id`)\n" +
+                "VALUES ('%s','%s','%s','9d3af492e10a06e4387e693db007eb46',0,1,0,'%s',1,%s,%s,NOW(),1);";
+        FileWriter fileWriter = null;
+        try {
+            File file = new File("user.sql");
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+            // 追加 true开启
+            fileWriter = new FileWriter(file.getName(), true);
+            for (OrgUser user : orgUsers) {
+                String userOrgId = user.getOrgId();
+                String ssoId = user.getId();
+                String loginName = user.getAccount();
+                String userName = user.getName();
+                String phone = user.getPhone();
+                if (StringUtils.isNotBlank(phone)) {
+                    phone = "'" + phone + "'";
+                }
+                String email = user.getEmail();
+                if (StringUtils.isNotBlank(email)) {
+                    email = "'" + email + "'";
+                }
+                String sql = String.format(sqlTemp, userOrgId, ssoId, loginName, userName, phone, email);
+                fileWriter.write(sql);
+                fileWriter.write(System.getProperty("line.separator"));
+                fileWriter.flush();
+            }
+            fileWriter.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (fileWriter != null) {
+                try {
+                    fileWriter.close();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+
+    private static void writeOrgSQLFile(List<Org> orgs) {
+        String sqlTemp = "INSERT INTO `dc-server`.`sys_org` (`org_id`,`parent_org_id`,`top_org_id`,`type`,`org_type`,`oss_type`,`org_name`,`org_short_name`,`sort_code`,`disable`,`is_delete`,`create_time`,`create_user_id` )\n" +
+                "VALUES ('%s','%s','%s',%s,%s,%s,'%s','%s',1,0,0,NOW(),1 );";
+        FileWriter fileWriter = null;
+        try {
+            File file = new File("org.sql");
+            if (!file.exists()) {
+                file.createNewFile();
+            }
+            // 追加 true开启
+            fileWriter = new FileWriter(file.getName(), true);
+            for (Org org : orgs) {
+                String orgId = org.getId();
+                String parentId = org.getParentId();
+                Integer orgType = 1; // 组织类型,0公司、1部门
+                if (StringUtils.isBlank(parentId)) {
+                    parentId = "0";
+                    orgType = 0;
+                }
+                String topId = org.getTopId();
+                Integer ossType = org.getType();
+                String name = org.getName();
+                String shortName = org.getShortName();
+                if (StringUtils.isBlank(shortName)) {
+                    shortName = "";
+                }
+                Integer authType = org.getAuthType(); // 数据监管平台认证类型 3-数据商 4-律所
+                Integer type = null; // 公司类型,1律所、2数据商、3交易所
+                if (authType == 3) {
+                    type = 2;
+                } else if (authType == 4) {
+                    type = 1;
+                }
+                String sql = String.format(sqlTemp, orgId, parentId, topId, type, orgType, ossType, name, shortName);
+                fileWriter.write(sql);
+                fileWriter.write(System.getProperty("line.separator"));
+                fileWriter.flush();
+            }
+            fileWriter.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (fileWriter != null) {
+                try {
+                    fileWriter.close();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
     }
 
     /**
@@ -41,6 +145,7 @@ public class Analysis {
         try (Workbook workbook = new HSSFWorkbook(new FileInputStream("D:\\myself\\Tools\\src\\main\\resources\\organization.xls"))) {
             Sheet sheet = workbook.getSheetAt(0);
             int countRow = sheet.getLastRowNum();
+            countRow = countRow + 1; // 下表索引从0开始
             System.out.println("组织信息Excel表数据总行数：" + countRow + " , 除去标题栏后的实际数据总行数：" + (countRow - 1));
 
             // 读取原始组织信息
@@ -84,6 +189,7 @@ public class Analysis {
             List<Org> childOrg = new ArrayList<>();
             for (Org org : firstOrg) {
                 if (StringUtils.isEmpty(org.getParentId())) {
+                    org.setTopId(org.getId());
                     topOrg.add(org);
                 } else {
                     childOrg.add(org);
@@ -126,6 +232,7 @@ public class Analysis {
         try (Workbook workbook = new HSSFWorkbook(new FileInputStream("D:\\myself\\Tools\\src\\main\\resources\\user.xls"))) {
             Sheet sheet = workbook.getSheetAt(0);
             int countRow = sheet.getLastRowNum();
+            countRow = countRow + 1; // 下表索引从0开始
             System.out.println("用户信息Excel表数据总行数：" + countRow + " , 除去标题栏后的实际数据总行数：" + (countRow - 1));
 
             // 读取原始组织信息
@@ -199,33 +306,15 @@ public class Analysis {
         try {
             Map<String, Integer> orgAuthType = new HashMap<>();
             // 交易监管平台 所有的认证组织
-//            JSONArray allAuthOrg = HTTPDemo.getAllOrg();
-//            for (int i = 0; i < allAuthOrg.size(); i++) {
-//                JSONObject tmp = allAuthOrg.getJSONObject(i);
-//                String uuid = tmp.getString("uuid");
-//                Integer authType = tmp.getInteger("authType");
-//                if (StringUtils.isNotBlank(uuid) && authType != null && (authType == 3 || authType == 4)) {
-//                    orgAuthType.put(uuid, authType);
-//                }
-//            }
-
-            orgAuthType.put("8096495ebc958387a0cefe499709cef1", 1);
-            orgAuthType.put("a1fb5af4e803ef8e58d182af243bc397", 1);
-            orgAuthType.put("a51382d05af0de5939b4cb7f440b3e1a", 1);
-            orgAuthType.put("ac11e48b96b1cd2c0bb3e8e05a01ddf1", 2);
-            orgAuthType.put("b970dc49ac4c3d92a9a2a79b4f94ea0b", 2);
-            orgAuthType.put("b99a521b3c06f11836402763ac01ee11", 2);
-            orgAuthType.put("08d51e4cd1227ec73c7ebd1a3d3b6b47", 3);
-            orgAuthType.put("0cf541c15ccebcdd36b259bdd2cf3669", 3);
-            orgAuthType.put("bdda488e48f14cfcb769872e1b5cc821", 4);
-            orgAuthType.put("347de132241261d4d19e51bac8113495", 5);
-            orgAuthType.put("3702e1878a3863381e2ae8e444de4d59", 5);
-            orgAuthType.put("47b3bf557b3fd0fa0cffe17b737457c7", 5);
-            orgAuthType.put("7568410e3acab2601478ecad9c78349a", 5);
-            orgAuthType.put("78099996527043dbc5f291934502214a", 5);
-
-            orgAuthType.put("b9aaa9d51a56af823524ff57d4de6349", 4);
-            orgAuthType.put("52497245742d6e46b718b43bd42a1ffc", 3);
+            JSONArray allAuthOrg = HTTPDemo.getAllOrg();
+            for (int i = 0; i < allAuthOrg.size(); i++) {
+                JSONObject tmp = allAuthOrg.getJSONObject(i);
+                String uuid = tmp.getString("uuid");
+                Integer authType = tmp.getInteger("authType");
+                if (StringUtils.isNotBlank(uuid) && authType != null && (authType == 3 || authType == 4)) {
+                    orgAuthType.put(uuid, authType);
+                }
+            }
 
             List<Org> tmpOrg = new ArrayList<>();
             for (Org org : topOrg) {
@@ -257,6 +346,7 @@ public class Analysis {
             Org top = findTopParentId(org, tmp, topOrgMap);
             if (top != null) {
                 org.setAuthType(top.getAuthType());
+                org.setTopId(top.getId());
                 result.add(org);
             }
         }
@@ -292,6 +382,7 @@ public class Analysis {
 class Org {
     private String id; // 组织ID
     private String parentId; // 父级组织ID
+    private String topId; // 顶级组织ID
     private String name; // 组织名称
     private String shortName; // 组织名称简写
     private Integer type; // 组织类型(0:行政归属, 1:实体组织, 2:直属单位, 3:企业, 4:社会组织, 5:机关事业单位, 6:个体工商户)
@@ -302,6 +393,7 @@ class Org {
         return "Org{" +
                 "id='" + id + '\'' +
                 ", parentId='" + parentId + '\'' +
+                ", topId='" + topId + '\'' +
                 ", name='" + name + '\'' +
                 ", shortName='" + shortName + '\'' +
                 ", type=" + type +
@@ -367,6 +459,14 @@ class Org {
     public void setAuthType(Integer authType) {
         this.authType = authType;
     }
+
+    public String getTopId() {
+        return topId;
+    }
+
+    public void setTopId(String topId) {
+        this.topId = topId;
+    }
 }
 
 class OrgUser {
@@ -377,7 +477,7 @@ class OrgUser {
     private String phone; // 电话
     private String email; // 邮箱
 
-    private Integer authType; // 组织认证类型
+    private Integer authType; // 数据监管平台认证类型 3-数据商 4-律所
 
     @Override
     public String toString() {
