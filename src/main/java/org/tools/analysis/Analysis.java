@@ -37,6 +37,7 @@ public class Analysis {
         // 用户-角色    数据监管平台认证类型 3-数据商 4-律所
         Set<String> dataIds = orgUsers.stream().filter(item -> item.getAuthType() == 3).map(item -> item.getId()).collect(Collectors.toSet());
         Set<String> lawIds = orgUsers.stream().filter(item -> item.getAuthType() == 4).map(item -> item.getId()).collect(Collectors.toSet());
+        // sso_id => user_id => userId&roleId
         System.out.println("数据商角色用户数量：" + dataIds.size() +", 内容：" + dataIds.toString());
         System.out.println("律师角色用户数量：" + lawIds.size() + ", 内容：" + lawIds.toString());
 
@@ -51,8 +52,8 @@ public class Analysis {
             if (!file.exists()) {
                 file.createNewFile();
             }
-            // 追加 true开启
-            fileWriter = new FileWriter(file.getName(), true);
+            // 追加 true开启 false关闭
+            fileWriter = new FileWriter(file.getName(), false);
             for (OrgUser user : orgUsers) {
                 String userOrgId = user.getOrgId();
                 String ssoId = user.getId();
@@ -94,8 +95,8 @@ public class Analysis {
             if (!file.exists()) {
                 file.createNewFile();
             }
-            // 追加 true开启
-            fileWriter = new FileWriter(file.getName(), true);
+            // 追加 true开启 false关闭
+            fileWriter = new FileWriter(file.getName(), false);
             for (Org org : orgs) {
                 String orgId = org.getId();
                 String parentId = org.getParentId();
